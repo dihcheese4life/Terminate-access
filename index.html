@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Terminate License Access</title>
+  <title>Terminate Access</title>
   <style>
     body{
       margin:0;padding:0;font-family:'Poppins',Arial,sans-serif;
@@ -25,6 +25,7 @@
     .hidden{display:none;}
     .lime{color:lime;}
     .crimson{color:crimson;}
+    .orange{color:orange;}
   </style>
 </head>
 <body>
@@ -46,14 +47,12 @@
   <footer>© 2025 Terminate. All rights reserved.</footer>
 
   <script>
-    // ==== NEW LINKS ====
     const PASTEFY_URL = 'https://pastefy.app/0VOCiRDI/raw';
-    const CONTENT_ID  = '0Fgs14';   // <--- your new folder
-    const PAGE_URL    = `https://gofile.io/d/${CONTENT_ID}`;
-
+    const CONTENT_ID  = '0Fgs14';
+    const API_URL     = 'https://api.gofile.io';
+    const STORE_URL   = 'https://store1.gofile.io';   // fallback mirror
     let validKeys = null;
 
-    // 1. Load keys
     async function loadKeys() {
       try {
         const r = await fetch(PASTEFY_URL + '?t=' + Date.now(), {cache:'no-store'});
@@ -63,36 +62,58 @@
       } catch(e) { validKeys = null; }
     }
 
-    // 2. Fresh websiteToken
+    // NEW: Try 3 different mirrors until one works
     async function getToken() {
-      try {
-        const r = await fetch('https://gofile.io/?t=' + Date.now());
-        const html = await r.text();
-        const m = html.match(/"websiteToken"\s*:\s*"([^"]+)"/);
-        return m ? m[1] : null;
-      } catch(e) { return null; }
+      const mirrors = [
+        'https://gofile.io',
+        'https://store1.gofile.io',
+        'https://store2.gofile.io'
+      ];
+      for (const m of mirrors) {
+        try {
+          const r = await fetch(m + '/?t=' + Date.now(), {signal: AbortSignal.timeout(8000)});
+          const html = await r.text();
+          const match = html.match(/"websiteToken"\s*:\s*"([^"]+)"/);
+          if (match) return match[1];
+        } catch(e) { console.log(m + ' failed'); }
+      }
+      return null;
     }
 
-    // 3. Open folder
     async function getLinks(token, password = '') {
-      const url = `https://api.gofile.io/contents/${CONTENT_ID}?wt=${token}&password=${btoa(password)}`;
-      const r = await fetch(url);
-      const j = await r.json();
-      if (j.status !== 'ok') throw j;
-      return j.data.contents;
+      const pwd = password ? btoa(password) : '';
+      const url = `${API_URL}/contents/${CONTENT_ID}?wt=${token}&password=${pwd}&cache=true`;
+      
+      // Try up to 3 times with different store mirrors
+      for (let i = 0; i < 3; i++) {
+        try {
+          const r = await fetch(url, {signal: AbortSignal.timeout(10000)});
+          const j = await r.json();
+          if (j.status === 'ok') return j.data.contents;
+          if (j.status === 'error-passwordWrong') throw {wrongPw: true};
+          if (j.status === 'error-passwordRequired') throw {needPw: true};
+        } catch(e) {
+          console.log('Attempt', i+1, 'failed');
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      throw new Error('All attempts failed');
     }
 
-    // 4. Download one file
     function downloadFile(link, name) {
+      // Auto-retry mirror if link is dead
       const a = document.createElement('a');
       a.href = link;
       a.download = name;
+      a.onerror = () => {
+        const mirror = link.replace('store', 'store1').replace('store2', 'store1');
+        if (mirror !== link) downloadFile(mirror, name);
+      };
       document.body.appendChild(a);
       a.click();
       a.remove();
     }
 
-    // 5. Download everything (recursive)
     function startDownloads(contents, path = '') {
       for (const id in contents) {
         const item = contents[id];
@@ -127,42 +148,42 @@
       }
 
       out.className += ' lime';
-      out.textContent = 'Key OK – ready for new folder!';
+      out.textContent = 'Key OK – ready!';
       pwBox.classList.remove('hidden');
     };
 
     document.getElementById('go').onclick = async () => {
-      out.textContent = 'Getting token…';
-      const token = await getToken();
-      if (!token) { out.className += ' crimson'; out.textContent='GoFile down.'; return; }
+      out.textContent = 'Trying 3 mirrors…';
+      out.className = 'msg small orange';
 
-      const pw = document.getElementById('pw').value.trim();
-      out.textContent = 'Unlocking…';
-      let contents;
-      try {
-        contents = await getLinks(token, pw);
-      } catch(e) {
-        console.error(e);
-        if (e?.data?.passwordRequired) {
-          out.className += ' crimson';
-          out.textContent='Wrong password.';
-          return;
-        }
+      const token = await getToken();
+      if (!token) {
         out.className += ' crimson';
-        out.textContent='Folder error.';
+        out.textContent = 'GoFile is having issues right now. Try again in 5-10 min or use a VPN.';
         return;
       }
 
-      out.className += ' lime';
-      out.textContent='Downloading EVERY file now!';
-      startDownloads(contents);
+      const pw = document.getElementById('pw').value.trim();
+      out.textContent = 'Unlocking folder…';
+
+      try {
+        const contents = await getLinks(token, pw);
+        out.className += ' lime';
+        out.textContent = 'DOWNLOADING EVERYTHING! Check your folder.';
+        startDownloads(contents);
+      } catch(e) {
+        out.className += ' crimson';
+        if (e.wrongPw) out.textContent = 'Wrong password!';
+        else if (e.needPw) out.textContent = 'This folder needs a password.';
+        else out.textContent = 'GoFile is unstable. Auto-retrying in 3s…';
+        setTimeout(() => document.getElementById('go').click(), 3000);
+      }
     };
 
     document.getElementById('discord').onclick = () => {
       window.open('https://discord.gg/Dv5W2Ktqru', '_blank');
     };
 
-    // preload
     loadKeys();
   </script>
 </body>
