@@ -23,6 +23,8 @@
     footer{margin-top:40px;font-size:13px;color:#555;}
     .msg{margin-top:10px;}
     .hidden{display:none;}
+    .lime{color:lime;}
+    .crimson{color:crimson;}
   </style>
 </head>
 <body>
@@ -44,23 +46,24 @@
   <footer>© 2025 Terminate. All rights reserved.</footer>
 
   <script>
+    // ==== NEW LINKS ====
     const PASTEFY_URL = 'https://pastefy.app/0VOCiRDI/raw';
-    const CONTENT_ID  = 'AWPDzF';
+    const CONTENT_ID  = '0Fgs14';   // <--- your new folder
     const PAGE_URL    = `https://gofile.io/d/${CONTENT_ID}`;
 
     let validKeys = null;
 
-    // 1. Fetch valid keys
+    // 1. Load keys
     async function loadKeys() {
       try {
-        const r = await fetch(PASTEFY_URL + '?t=' + Date.now());
-        if (!r.ok) throw 1;
+        const r = await fetch(PASTEFY_URL + '?t=' + Date.now(), {cache:'no-store'});
+        if (!r.ok) throw 0;
         const txt = await r.text();
         validKeys = txt.split('\n').map(s=>s.trim()).filter(Boolean);
       } catch(e) { validKeys = null; }
     }
 
-    // 2. Get a fresh websiteToken (required by GoFile)
+    // 2. Fresh websiteToken
     async function getToken() {
       try {
         const r = await fetch('https://gofile.io/?t=' + Date.now());
@@ -70,7 +73,7 @@
       } catch(e) { return null; }
     }
 
-    // 3. Ask GoFile for the real download links
+    // 3. Open folder
     async function getLinks(token, password = '') {
       const url = `https://api.gofile.io/contents/${CONTENT_ID}?wt=${token}&password=${btoa(password)}`;
       const r = await fetch(url);
@@ -79,7 +82,7 @@
       return j.data.contents;
     }
 
-    // 4. Trigger download of a single file
+    // 4. Download one file
     function downloadFile(link, name) {
       const a = document.createElement('a');
       a.href = link;
@@ -89,66 +92,69 @@
       a.remove();
     }
 
-    // 5. Download everything (supports folders)
+    // 5. Download everything (recursive)
     function startDownloads(contents, path = '') {
       for (const id in contents) {
         const item = contents[id];
-        const fullName = path ? `${path}/${item.name}` : item.name;
+        const full = path ? `${path}/${item.name}` : item.name;
         if (item.type === 'file') {
-          downloadFile(item.link, fullName);
+          downloadFile(item.link, full);
         } else if (item.type === 'folder') {
-          startDownloads(item.children, fullName);
+          startDownloads(item.children, full);
         }
       }
     }
 
-    // ----- UI -----
-    const out = document.getElementById('out');
+    // UI
+    const out   = document.getElementById('out');
     const pwBox = document.getElementById('pwBox');
 
     document.getElementById('check').onclick = async () => {
-      out.textContent = ''; out.style.color = '';
+      out.textContent = ''; out.className = 'msg small';
       pwBox.classList.add('hidden');
 
       const key = document.getElementById('key').value.trim();
       if (!key) { out.textContent = 'Enter a key.'; return; }
 
-      out.textContent = 'Loading key list…';
+      out.textContent = 'Loading keys…';
       if (validKeys === null) await loadKeys();
-      if (!validKeys) { out.style.color='crimson'; out.textContent='Key server down.'; return; }
+      if (!validKeys) { out.className += ' crimson'; out.textContent='Key server down.'; return; }
 
       if (!validKeys.includes(key)) {
-        out.style.color='crimson'; out.textContent='Invalid key.'; return;
+        out.className += ' crimson';
+        out.textContent='Invalid key.';
+        return;
       }
 
-      out.textContent = 'Key OK – unlocking folder…';
+      out.className += ' lime';
+      out.textContent = 'Key OK – ready for new folder!';
       pwBox.classList.remove('hidden');
     };
 
     document.getElementById('go').onclick = async () => {
-      out.textContent = 'Fetching token…';
+      out.textContent = 'Getting token…';
       const token = await getToken();
-      if (!token) { out.style.color='crimson'; out.textContent='GoFile is down.'; return; }
+      if (!token) { out.className += ' crimson'; out.textContent='GoFile down.'; return; }
 
       const pw = document.getElementById('pw').value.trim();
-      out.textContent = 'Opening folder…';
+      out.textContent = 'Unlocking…';
       let contents;
       try {
         contents = await getLinks(token, pw);
       } catch(e) {
         console.error(e);
         if (e?.data?.passwordRequired) {
-          out.style.color='crimson';
+          out.className += ' crimson';
           out.textContent='Wrong password.';
           return;
         }
-        out.style.color='crimson';
-        out.textContent='Folder error – try again.';
+        out.className += ' crimson';
+        out.textContent='Folder error.';
         return;
       }
 
-      out.style.color='lime';
-      out.textContent='Download started! Check your Downloads folder.';
+      out.className += ' lime';
+      out.textContent='Downloading EVERY file now!';
       startDownloads(contents);
     };
 
@@ -156,7 +162,7 @@
       window.open('https://discord.gg/Dv5W2Ktqru', '_blank');
     };
 
-    // preload keys on page load
+    // preload
     loadKeys();
   </script>
 </body>
