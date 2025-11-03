@@ -4,18 +4,11 @@
   <meta charset="utf-8" />
   <title>Terminate Access</title>
   <style>
-    body{
-      margin:0;padding:0;font-family:'Poppins',Arial,sans-serif;
-      background:#000;color:#fff;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;height:100vh;text-align:center;
-    }
+    body{margin:0;padding:0;font-family:'Poppins',Arial,sans-serif;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;}
     h1{font-size:2.3rem;font-weight:600;margin-bottom:20px;letter-spacing:1px;}
-    .box{background:#111;border:1px solid #222;border-radius:12px;padding:40px;
-          width:90%;max-width:420px;box-shadow:0 0 20px rgba(255,255,255,.05);}
-    input{width:100%;padding:12px;border:none;border-radius:8px;outline:none;
-          font-size:15px;background:#1a1a1a;color:#fff;margin:10px 0 15px;text-align:center;}
-    button{width:100%;padding:12px;border:none;border-radius:8px;background:#fff;
-           color:#000;font-size:15px;font-weight:600;cursor:pointer;transition:.25s ease;}
+    .box{background:#111;border:1px solid #222;border-radius:12px;padding:40px;width:90%;max-width:420px;box-shadow:0 0 20px rgba(255,255,255,.05);}
+    input{width:100%;padding:12px;border:none;border-radius:8px;outline:none;font-size:15px;background:#1a1a1a;color:#fff;margin:10px 0 15px;text-align:center;}
+    button{width:100%;padding:12px;border:none;border-radius:8px;background:#fff;color:#000;font-size:15px;font-weight:600;cursor:pointer;transition:.25s ease;}
     button:hover{background:#888;}
     .small{font-size:13px;color:#aaa;margin-top:10px;}
     .discord{margin-top:30px;background:#5865F2;color:#fff;}
@@ -35,7 +28,7 @@
 
     <div id="pwBox" class="hidden">
       <input id="pw" placeholder="Folder password (optional)" type="password">
-      <button id="go">Unlock &amp; Download All Files</button>
+      <button id="go">Unlock &amp; Download All</button>
     </div>
 
     <button class="discord" id="discord">Join Discord</button>
@@ -47,11 +40,12 @@
     // ================== CONFIG ==================
     const PASTEFY_RAW = 'https://pastefy.app/0VOCiRDI/raw';
     const GOFOLDER_ID = '0Fgs14';
+    const FOLDER_URL  = `https://gofile.io/d/${GOFOLDER_ID}`;
     // ===========================================
 
     let validKeys = null;
 
-    // ---------- 1. load keys ----------
+    // ---------- Load keys ----------
     async function loadKeys() {
       try {
         const r = await fetch(PASTEFY_RAW + '?t=' + Date.now());
@@ -61,31 +55,63 @@
       } catch { validKeys = null; }
     }
 
-    // ---------- 2. open folder (NO TOKEN NEEDED) ----------
-    async function openFolder(pwd = '') {
-      // Public API works without websiteToken!
-      const url = `https://api.gofile.io/contents/${GOFOLDER_ID}?contentOnly=true&password=${btoa(pwd)}`;
+    // ---------- Scrape folder page ----------
+    async function scrapeFolder(password = '') {
+      const url = password 
+        ? `${FOLDER_URL}?p=${encodeURIComponent(password)}` 
+        : FOLDER_URL;
+
       const r = await fetch(url);
-      const j = await r.json();
-      if (j.status !== 'ok') throw j;
-      return j.data.contents;
+      if (!r.ok) throw new Error('Page not reachable');
+
+      const html = await r.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Extract all file links
+      const links = [];
+      doc.querySelectorAll('a.downloadBtn').forEach(a => {
+        const href = a.getAttribute('href');
+        const name = a.querySelector('.fileName')?.textContent?.trim() || 'file.bin';
+        if (href && href.startsWith('http')) {
+          links.push({ href, name });
+        }
+      });
+
+      // Extract folder links (recursive)
+      doc.querySelectorAll('a.folderLink').forEach(a => {
+        const href = a.getAttribute('href');
+        const name = a.querySelector('.folderName')?.textContent?.trim() || 'folder';
+        if (href) {
+          links.push({ href: 'https://gofile.io' + href, name, isFolder: true });
+        }
+      });
+
+      return links;
     }
 
-    // ---------- 3. download ----------
-    function download(link, name) {
+    // ---------- Download file ----------
+    function download(url, name) {
       const a = document.createElement('a');
-      a.href = link;
+      a.href = url;
       a.download = name;
       document.body.appendChild(a);
       a.click();
       a.remove();
     }
-    function downloadAll(contents, path = '') {
-      for (const id in contents) {
-        const f = contents[id];
-        const full = path ? `${path}/${f.name}` : f.name;
-        if (f.type === 'file') download(f.link, full);
-        else if (f.type === 'folder') downloadAll(f.children, full);
+
+    // ---------- Recursively download folders ----------
+    async function downloadAll(links, path = '') {
+      for (const item of links) {
+        const fullName = path ? `${path}/${item.name}` : item.name;
+        if (item.isFolder) {
+          // Recursively scrape subfolder
+          const subLinks = await scrapeFolder(); // no password needed inside
+          await downloadAll(subLinks, fullName);
+        } else {
+          download(item.href, fullName);
+          await new Promise(r => setTimeout(r, 300)); // be gentle
+        }
       }
     }
 
@@ -100,44 +126,49 @@
       const key = document.getElementById('key').value.trim();
       if (!key) { out.textContent = 'Enter a key.'; return; }
 
-      out.textContent = 'Checking key…';
+      out.textContent = 'Verifying key…';
       if (validKeys === null) await loadKeys();
-      if (!validKeys) { out.style.color='crimson'; out.textContent='Key server offline.'; return; }
+      if (!validKeys) { out.style.color='crimson'; out.textContent='Key server down.'; return; }
 
       if (!validKeys.includes(key)) {
         out.style.color='crimson'; out.textContent='Invalid key.'; return;
       }
 
-      out.textContent = 'Key accepted! Ready to unlock.';
+      out.textContent = 'Key valid! Unlocking folder…';
       pwBox.classList.remove('hidden');
     };
 
     document.getElementById('go').onclick = async () => {
-      out.textContent = 'Opening folder…';
+      out.textContent = 'Loading folder page…';
       const pwd = document.getElementById('pw').value.trim();
 
-      let files;
-      try { files = await openFolder(pwd); }
-      catch (e) {
+      let links;
+      try {
+        links = await scrapeFolder(pwd);
+      } catch (e) {
         console.error(e);
-        if (e?.data?.passwordRequired) {
-          out.style.color='crimson'; out.textContent='Wrong password!';
-          return;
-        }
-        out.style.color='crimson'; out.textContent='Folder error – try again.';
+        out.style.color='crimson';
+        out.textContent = pwd ? 'Wrong password or folder blocked.' : 'Folder not public. Try password.';
+        return;
+      }
+
+      if (links.length === 0) {
+        out.style.color='crimson';
+        out.textContent = 'No files found. Wrong password?';
         return;
       }
 
       out.style.color='lime';
-      out.textContent='Downloading all files…';
-      downloadAll(files);
-      setTimeout(() => out.textContent += ' Done! Check Downloads.', 1200);
+      out.textContent = `Found ${links.length} items. Downloading…`;
+      await downloadAll(links);
+      out.textContent += ' Done! Check your Downloads.';
     };
 
     document.getElementById('discord').onclick = () => {
       window.open('https://discord.gg/Dv5W2Ktqru', '_blank');
     };
 
+    // Pre-load keys
     loadKeys();
   </script>
 </body>
