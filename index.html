@@ -1,190 +1,66 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8">
   <title>Terminate Access</title>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
-    body{
-      margin:0;padding:0;font-family:'Poppins',Arial,sans-serif;
-      background:#000;color:#fff;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;height:100vh;text-align:center;
-    }
-    h1{font-size:2.3rem;font-weight:600;margin-bottom:20px;letter-spacing:1px;}
-    .box{background:#111;border:1px solid #222;border-radius:12px;padding:40px;
-          width:90%;max-width:420px;box-shadow:0 0 20px rgba(255,255,255,.05);}
-    input{width:100%;padding:12px;border:none;border-radius:8px;outline:none;
-          font-size:15px;background:#1a1a1a;color:#fff;margin:10px 0 15px;text-align:center;}
-    button{width:100%;padding:12px;border:none;border-radius:8px;background:#fff;
-           color:#000;font-size:15px;font-weight:600;cursor:pointer;transition:.25s ease;}
-    button:hover{background:#888;}
-    .small{font-size:13px;color:#aaa;margin-top:10px;}
-    .discord{margin-top:30px;background:#5865F2;color:#fff;}
-    .discord:hover{background:#4752C4;}
-    footer{margin-top:40px;font-size:13px;color:#555;}
-    .msg{margin-top:10px;}
-    .hidden{display:none;}
+    body{margin:0;padding:0;font-family:Arial;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;}
+    .box{background:#111;border:1px solid #222;border-radius:12px;padding:40px;width:90%;max-width:420px;}
+    input,button{width:100%;padding:12px;margin:10px 0;border:none;border-radius:8px;font-size:15px;}
+    input{background:#1a1a1a;color:#fff;text-align:center;}
+    button{background:#fff;color:#000;cursor:pointer;}
+    button:hover{background:#ccc;}
+    .discord{margin-top:20px;background:#5865F2;color:#fff;}
+    .msg{color:#aaa;font-size:13px;margin-top:10px;}
     .lime{color:lime;}
     .crimson{color:crimson;}
-    .orange{color:orange;}
   </style>
 </head>
 <body>
   <div class="box">
     <h1>Terminate Access</h1>
-    <input id="key" placeholder="Enter your license key">
-    <button id="check">Verify License</button>
-    
-    <div id="out" class="msg small"></div>
-    
-    <div id="pwBox" class="hidden">
-      <input id="pw" placeholder="Folder password (if any)" type="password">
-      <button id="go">Unlock & Download</button>
-    </div>
-    
-    <button class="discord" id="discord">Join Discord</button>
+    <input id="key" placeholder="Enter license key">
+    <button id="check">Verify</button>
+    <div id="out" class="msg"></div>
+    <button class="discord" onclick="window.open('https://discord.gg/Dv5W2Ktqru','_blank')">Join Discord</button>
   </div>
 
-  <footer>© 2025 Terminate. All rights reserved.</footer>
-
   <script>
-    const PASTEFY_URL = 'https://pastefy.app/0VOCiRDI/raw';
-    const CONTENT_ID  = '0Fgs14';
-    const API_URL     = 'https://api.gofile.io';
-    const STORE_URL   = 'https://store1.gofile.io';   // fallback mirror
-    let validKeys = null;
+    const KEYS_URL = 'https://pastefy.app/0VOCiRDI/raw';
+    const REPO = 'https://raw.githubusercontent.com/YourName/YourRepo/main/files';
+    const FOLDER_STRUCTURE = [
+      'cheat.exe',
+      'config.json',
+      'assets/logo.png'
+    ]; // ← LIST ALL FILES HERE
 
-    async function loadKeys() {
-      try {
-        const r = await fetch(PASTEFY_URL + '?t=' + Date.now(), {cache:'no-store'});
-        if (!r.ok) throw 0;
-        const txt = await r.text();
-        validKeys = txt.split('\n').map(s=>s.trim()).filter(Boolean);
-      } catch(e) { validKeys = null; }
-    }
-
-    // NEW: Try 3 different mirrors until one works
-    async function getToken() {
-      const mirrors = [
-        'https://gofile.io',
-        'https://store1.gofile.io',
-        'https://store2.gofile.io'
-      ];
-      for (const m of mirrors) {
-        try {
-          const r = await fetch(m + '/?t=' + Date.now(), {signal: AbortSignal.timeout(8000)});
-          const html = await r.text();
-          const match = html.match(/"websiteToken"\s*:\s*"([^"]+)"/);
-          if (match) return match[1];
-        } catch(e) { console.log(m + ' failed'); }
-      }
-      return null;
-    }
-
-    async function getLinks(token, password = '') {
-      const pwd = password ? btoa(password) : '';
-      const url = `${API_URL}/contents/${CONTENT_ID}?wt=${token}&password=${pwd}&cache=true`;
-      
-      // Try up to 3 times with different store mirrors
-      for (let i = 0; i < 3; i++) {
-        try {
-          const r = await fetch(url, {signal: AbortSignal.timeout(10000)});
-          const j = await r.json();
-          if (j.status === 'ok') return j.data.contents;
-          if (j.status === 'error-passwordWrong') throw {wrongPw: true};
-          if (j.status === 'error-passwordRequired') throw {needPw: true};
-        } catch(e) {
-          console.log('Attempt', i+1, 'failed');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      throw new Error('All attempts failed');
-    }
-
-    function downloadFile(link, name) {
-      // Auto-retry mirror if link is dead
-      const a = document.createElement('a');
-      a.href = link;
-      a.download = name;
-      a.onerror = () => {
-        const mirror = link.replace('store', 'store1').replace('store2', 'store1');
-        if (mirror !== link) downloadFile(mirror, name);
-      };
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-
-    function startDownloads(contents, path = '') {
-      for (const id in contents) {
-        const item = contents[id];
-        const full = path ? `${path}/${item.name}` : item.name;
-        if (item.type === 'file') {
-          downloadFile(item.link, full);
-        } else if (item.type === 'folder') {
-          startDownloads(item.children, full);
-        }
-      }
-    }
-
-    // UI
-    const out   = document.getElementById('out');
-    const pwBox = document.getElementById('pwBox');
+    let validKeys = [];
+    fetch(KEYS_URL).then(r=>r.text()).then(t=>validKeys=t.split('\n').map(s=>s.trim()).filter(Boolean));
 
     document.getElementById('check').onclick = async () => {
-      out.textContent = ''; out.className = 'msg small';
-      pwBox.classList.add('hidden');
-
+      const out = document.getElementById('out');
       const key = document.getElementById('key').value.trim();
-      if (!key) { out.textContent = 'Enter a key.'; return; }
+      if (!key) { out.textContent='Enter key.'; return; }
+      if (validKeys.length === 0) { out.textContent='Loading...'; setTimeout(() => document.getElementById('check').click(), 500); return; }
+      if (!validKeys.includes(key)) { out.className='msg crimson'; out.textContent='Invalid key.'; return; }
 
-      out.textContent = 'Loading keys…';
-      if (validKeys === null) await loadKeys();
-      if (!validKeys) { out.className += ' crimson'; out.textContent='Key server down.'; return; }
+      out.className='msg lime';
+      out.textContent='Downloading all files...';
 
-      if (!validKeys.includes(key)) {
-        out.className += ' crimson';
-        out.textContent='Invalid key.';
-        return;
+      const zip = new JSZip();
+      for (const file of FOLDER_STRUCTURE) {
+        const url = `${REPO}/${file}`;
+        const blob = await fetch(url).then(r => r.blob());
+        zip.file(file, blob);
       }
-
-      out.className += ' lime';
-      out.textContent = 'Key OK – ready!';
-      pwBox.classList.remove('hidden');
+      zip.generateAsync({type:'blob'}).then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Terminate_Files.zip';
+        a.click();
+      });
     };
-
-    document.getElementById('go').onclick = async () => {
-      out.textContent = 'Trying 3 mirrors…';
-      out.className = 'msg small orange';
-
-      const token = await getToken();
-      if (!token) {
-        out.className += ' crimson';
-        out.textContent = 'GoFile is having issues right now. Try again in 5-10 min or use a VPN.';
-        return;
-      }
-
-      const pw = document.getElementById('pw').value.trim();
-      out.textContent = 'Unlocking folder…';
-
-      try {
-        const contents = await getLinks(token, pw);
-        out.className += ' lime';
-        out.textContent = 'DOWNLOADING EVERYTHING! Check your folder.';
-        startDownloads(contents);
-      } catch(e) {
-        out.className += ' crimson';
-        if (e.wrongPw) out.textContent = 'Wrong password!';
-        else if (e.needPw) out.textContent = 'This folder needs a password.';
-        else out.textContent = 'GoFile is unstable. Auto-retrying in 3s…';
-        setTimeout(() => document.getElementById('go').click(), 3000);
-      }
-    };
-
-    document.getElementById('discord').onclick = () => {
-      window.open('https://discord.gg/Dv5W2Ktqru', '_blank');
-    };
-
-    loadKeys();
   </script>
 </body>
 </html>
