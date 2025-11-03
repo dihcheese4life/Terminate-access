@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Terminate License Access</title>
+  <style>
+    body{
+      margin:0;padding:0;font-family:'Poppins',Arial,sans-serif;
+      background:#000;color:#fff;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;height:100vh;text-align:center;
+    }
+    h1{font-size:2.3rem;font-weight:600;margin-bottom:20px;letter-spacing:1px;}
+    .box{background:#111;border:1px solid #222;border-radius:12px;padding:40px;
+          width:90%;max-width:420px;box-shadow:0 0 20px rgba(255,255,255,.05);}
+    input{width:100%;padding:12px;border:none;border-radius:8px;outline:none;
+          font-size:15px;background:#1a1a1a;color:#fff;margin:10px 0 15px;text-align:center;}
+    button{width:100%;padding:12px;border:none;border-radius:8px;background:#fff;
+           color:#000;font-size:15px;font-weight:600;cursor:pointer;transition:.25s ease;}
+    button:hover{background:#888;}
+    .small{font-size:13px;color:#aaa;margin-top:10px;}
+    .discord{margin-top:30px;background:#5865F2;color:#fff;}
+    .discord:hover{background:#4752C4;}
+    footer{margin-top:40px;font-size:13px;color:#555;}
+    .msg{margin-top:10px;}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Terminate Access</h1>
+    <input id="key" placeholder="Enter your license key">
+    <button id="check">Verify License</button>
+    <div id="out" class="msg small"></div>
+    <button class="discord" id="discord">Join Discord</button>
+  </div>
+
+  <footer>© 2025 Terminate. All rights reserved.</footer>
+
+  <script>
+    const PASTEFY_URL = 'https://pastefy.app/0VOCiRDI/raw';
+    const GOFILE_ID   = 'AWPDzF';
+
+    // ---- fetch valid keys -------------------------------------------------
+    async function fetchValidKeys() {
+      try {
+        const resp = await fetch(PASTEFY_URL, {cache: 'no-store'});
+        if (!resp.ok) throw new Error('Pastefy unreachable');
+        const text = await resp.text();
+        return text.split('\n').map(k => k.trim()).filter(k => k);
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    }
+
+    // ---- get direct download link from GoFile -----------------------------
+    async function getGoFileDirectLink() {
+      const apiUrl = `https://api.gofile.io/getContent?contentId=${GOFILE_ID}`;
+      try {
+        const r = await fetch(apiUrl);
+        const j = await r.json();
+        if (j.status !== 'ok' || !j.data || !j.data.contents) throw new Error('Invalid GoFile response');
+        const file = Object.values(j.data.contents)[0];
+        return file?.directLink || file?.link || null;
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    }
+
+    // ---- trigger download -------------------------------------------------
+    function downloadFile(url, name = 'download.bin') {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // ---- main verify handler ----------------------------------------------
+    document.getElementById('check').onclick = async () => {
+      const out = document.getElementById('out');
+      out.textContent = '';
+      out.style.color = '';
+
+      const key = document.getElementById('key').value.trim();
+      if (!key) { out.textContent = 'Enter a license key.'; return; }
+
+      out.textContent = 'Fetching key list…';
+      const validKeys = await fetchValidKeys();
+      if (!validKeys) { out.style.color='crimson'; out.textContent='Failed to load key list.'; return; }
+
+      if (!validKeys.includes(key)) {
+        out.style.color='crimson';
+        out.textContent='Invalid key.';
+        return;
+      }
+
+      out.textContent='Key valid – preparing download…';
+      const direct = await getGoFileDirectLink();
+      if (!direct) {
+        out.style.color='crimson';
+        out.textContent='Could not retrieve download link.';
+        return;
+      }
+
+      out.style.color='lime';
+      out.textContent='Download started!';
+      downloadFile(direct, 'Terminate_Content.zip');
+    };
+
+    // ---- discord button ---------------------------------------------------
+    document.getElementById('discord').onclick = () => {
+      window.open('https://discord.gg/Dv5W2Ktqru', '_blank');
+    };
+  </script>
+</body>
+</html>
